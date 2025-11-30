@@ -37,7 +37,7 @@ def clasificar_nivel(prob_pct):
     else: return "Alto"
 
 # 5. Interfaz de Carga y Procesamiento
-uploaded_file = st.file_uploader("Cargar archivo CSV)", type=['csv'])
+uploaded_file = st.file_uploader("Cargar archivo CSV", type=['csv'])
 
 if uploaded_file is not None and rf_model is not None:
     try:
@@ -168,16 +168,16 @@ if uploaded_file is not None and rf_model is not None:
             # Mapear pensamientos para visualización clara
             df_abandon = df_resultado.copy()
             if df_abandon["Pensamientos de abandono"].dtype in [int, float, np.int64]:
-                df_abandon["Abandono_Label"] = df_abandon["Pensamientos de abandono"].map({0: "No", 1: "Sí"})
+                df_abandon["Abandono"] = df_abandon["Pensamientos de abandono"].map({0: "No", 1: "Sí"})
             else:
-                df_abandon["Abandono_Label"] = df_abandon["Pensamientos de abandono"]
+                df_abandon["Abandono"] = df_abandon["Pensamientos de abandono"]
 
             # Gráfico de barras apiladas o agrupadas para ver la relación
             fig_abandon = px.histogram(
                 df_abandon,
                 x="Abandono",
                 color="Posibilidad",
-                barmode="relative", # Apilado para ver composición total
+                barmode="relative", 
                 color_discrete_map={"Alto":"#FF4B4B","Medio":"#FFAA00","Bajo":"#00CC96"},
                 text_auto=True
             )
@@ -190,23 +190,29 @@ if uploaded_file is not None and rf_model is not None:
             st.plotly_chart(fig_abandon, use_container_width=True)
 
         with col4:
-            st.markdown("##### 📉 Estrés Académico vs Probabilidad de Deserción")
-            # Boxplot para ver distribución de probabilidad por nivel de presión
-            # Asumimos que Presión Académica es numérica u ordinal
-            fig_stress = px.box(
-                df_resultado,
-                x="Presión académica",
+            st.markdown("##### Estrés Académico vs Probabilidad de Deserción")
+            df_scatter = df_resultado.copy()
+            df_scatter["Presión_Jitter"] = df_scatter["Presión académica"] + np.random.normal(0, 0.1, size=len(df_scatter))
+
+            fig_stress = px.scatter(
+                df_scatter,
+                x="Presión_Jitter",
                 y="Probabilidad_%",
-                color="Presión académica", # Colorear por nivel de presión para impacto visual
-                color_discrete_sequence=px.colors.sequential.Reds,
-                points="outliers" # Mostrar solo outliers como puntos para limpieza
+                color="Posibilidad",
+                color_discrete_map={"Alto":"#FF4B4B","Medio":"#FFAA00","Bajo":"#00CC96"},
+                hover_data=["Edad", "Horas de estudio"], # Datos extra al pasar el mouse
+                opacity=0.6 # Transparencia para ver acumulación
             )
+            
             fig_stress.update_layout(
-                xaxis_title="Nivel de Presión Académica",
+                xaxis_title="Nivel de Presión Académica (1-5)",
                 yaxis_title="Probabilidad Calculada (%)",
-                showlegend=False,
+                legend_title="Nivel de Riesgo",
                 margin=dict(t=30)
             )
+
+            fig_stress.update_xaxes(tickvals=[1, 2, 3, 4, 5])
+            
             st.plotly_chart(fig_stress, use_container_width=True)
 
         # ---------------------------------------------------------
