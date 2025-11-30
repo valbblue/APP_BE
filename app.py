@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import joblib
 import numpy as np
-import plotly.express as px  # Librería para gráficos bonitos
+import plotly.express as px
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Predicción Bienestar Estudiantil", layout="wide")
 
 st.title("Sistema de Predicción de Bienestar Estudiantil")
-st.write("Sube un archivo CSV para predecir y visualizar los riesgos de deserción.")
+st.markdown("Sube un archivo CSV para generar predicciones y visualizar el análisis de riesgos.")
 
 # 2. Carga del Modelo
 @st.cache_resource
@@ -17,7 +17,7 @@ def cargar_modelo():
         model = joblib.load('modelo_bienestar.joblib')
         return model
     except FileNotFoundError:
-        st.error("No se encontró el archivo 'modelo_bienestar.joblib'.")
+        st.error("⚠️ Error: No se encontró el archivo 'modelo_bienestar.joblib'.")
         return None
 
 rf_model = cargar_modelo()
@@ -36,8 +36,8 @@ def clasificar_nivel(prob_pct):
     elif prob_pct < 66: return "Medio"
     else: return "Alto"
 
-# 5. Interfaz de Carga
-uploaded_file = st.file_uploader("Cargar archivo CSV", type=['csv'])
+# 5. Interfaz de Carga y Procesamiento
+uploaded_file = st.file_uploader("Cargar archivo CSV (Separador ;)", type=['csv'])
 
 if uploaded_file is not None and rf_model is not None:
     try:
@@ -60,101 +60,170 @@ if uploaded_file is not None and rf_model is not None:
                 if X_input[col].dtype == 'object':
                     X_input[col] = X_input[col].map(map_dict).fillna(0).astype(int)
         
-        # Reordenar y Predecir
+        # Validar columnas y predecir
+        for col in feature_names:
+            if col not in X_input.columns:
+                X_input[col] = 0
+                
         X_input = X_input[feature_names]
         probs = rf_model.predict_proba(X_input)[:, 1]
         
-        # Resultados
+        # Crear DataFrame de Resultados
         df_resultado = df_new.copy()
         df_resultado['Probabilidad_%'] = (probs * 100).round(2)
         df_resultado['Posibilidad'] = df_resultado['Probabilidad_%'].apply(clasificar_nivel)
 
         # ---------------------------------------------------------
-        # SECCIÓN DEL DASHBOARD (NUEVO)
+        # DASHBOARD DE RESULTADOS
         # ---------------------------------------------------------
-        st.divider()  # Línea divisoria
-        st.subheader("📊 Dashboard de Resultados")
+        st.divider()
+        st.subheader("📊 Dashboard Analítico de Riesgo")
 
-        # Métricas principales (KPIs)
+        # KPIs (Sin flechas, formato limpio)
+        total = len(df_resultado)
+        count_alto = len(df_resultado[df_resultado["Posibilidad"] == "Alto"])
+        count_medio = len(df_resultado[df_resultado["Posibilidad"] == "Medio"])
+        count_bajo = len(df_resultado[df_resultado["Posibilidad"] == "Bajo"])
+        
+        # Cálculo de porcentajes
+        pct_alto = (count_alto / total * 100) if total > 0 else 0
+        pct_medio = (count_medio / total * 100) if total > 0 else 0
+        pct_bajo = (count_bajo / total * 100) if total > 0 else 0
+
+        # Definición de columnas para KPIs
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        kpi1.metric("Total Estudiantes", len(df_resultado))
-        kpi2.metric("Riesgo Alto 🔴", len(df_resultado[df_resultado['Posibilidad'] == 'Alto']))
-        kpi3.metric("Riesgo Medio 🟡", len(df_resultado[df_resultado['Posibilidad'] == 'Medio']))
-        kpi4.metric("Promedio Probabilidad", f"{df_resultado['Probabilidad_%'].mean():.1f}%")
 
-        # Fila 1 de Gráficos
-        col_graf1, col_graf2 = st.columns(2)
+        # Uso de label y value combinados para evitar la flecha (delta)
+        kpi1.metric(
+            label="Total Estudiantes", 
+            value=f"{total}", 
+            border=True
+        )
+        kpi2.metric(
+            label="Riesgo Alto 🔴", 
+            value=f"{count_alto} ({pct_alto:.1f}%)", 
+            border=True
+        )
+        kpi3.metric(
+            label="Riesgo Medio 🟠", 
+            value=f"{count_medio} ({pct_medio:.1f}%)", 
+            border=True
+        )
+        kpi4.metric(
+            label="Riesgo Bajo 🟢", 
+            value=f"{count_bajo} ({pct_bajo:.1f}%)", 
+            border=True
+        )
 
-        with col_graf1:
-            # Gráfico de Donas: Distribución de Riesgo
+        st.markdown("---")
+
+        # --- FILA 1: Resumen General y Análisis de Género ---
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("##### 📌 Distribución General de Riesgo")
+            # Gráfico de Donas Atractivo
             fig_pie = px.pie(
                 df_resultado, 
                 names='Posibilidad', 
-                title='Distribución de Estudiantes por Nivel de Riesgo',
                 color='Posibilidad',
-                # Colores semaforo
                 color_discrete_map={'Alto':'#FF4B4B', 'Medio':'#FFAA00', 'Bajo':'#00CC96'},
-                hole=0.4
+                hole=0.5
             )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            fig_pie.update_layout(showlegend=False, margin=dict(t=30, b=0, l=0, r=0))
             st.plotly_chart(fig_pie, use_container_width=True)
 
-        with col_graf2:
-            # Histograma: Distribución de Probabilidades
-            fig_hist = px.histogram(
-                df_resultado, 
-                x="Probabilidad_%", 
-                nbins=20, 
-                title="Distribución de Probabilidades (%)",
-                color_discrete_sequence=['#3366CC']
+        with col2:
+            st.markdown("##### 🚻 Clasificación de Riesgo por Género")
+            # Preparar datos: mapear numérico a texto si es necesario para el gráfico
+            df_gen = df_resultado.copy()
+            if df_gen["Género"].dtype in [int, float, np.int64]:
+                 df_gen["Género_label"] = df_gen["Género"].map({0:"Femenino", 1:"Masculino"})
+            else:
+                 df_gen["Género_label"] = df_gen["Género"]
+            
+            # Histograma agrupado
+            fig_gen = px.histogram(
+                df_gen,
+                x="Género_label",
+                color="Posibilidad",
+                barmode="group",
+                color_discrete_map={"Alto":"#FF4B4B","Medio":"#FFAA00","Bajo":"#00CC96"},
+                text_auto=True
             )
-            fig_hist.update_layout(bargap=0.1)
-            st.plotly_chart(fig_hist, use_container_width=True)
+            fig_gen.update_layout(
+                xaxis_title=None, 
+                yaxis_title="Cantidad de Estudiantes",
+                legend_title="Nivel de Riesgo",
+                margin=dict(t=30)
+            )
+            st.plotly_chart(fig_gen, use_container_width=True)
 
-        # Fila 2 de Gráficos (Análisis de Factores)
-        st.markdown("#### 🔍 Análisis de Factores Clave")
-        col_graf3, col_graf4 = st.columns(2)
+        # --- FILA 2: Factores Críticos (Abandono y Estrés) ---
+        col3, col4 = st.columns(2)
 
-        with col_graf3:
-            # Relación Presión Académica vs Riesgo Promedio
-            # Agrupamos datos para ver tendencias
-            df_presion = df_resultado.groupby("Presión académica")["Probabilidad_%"].mean().reset_index()
-            fig_bar = px.bar(
-                df_presion, 
-                x="Presión académica", 
+        with col3:
+            st.markdown("##### 💭 Pensamientos de Abandono vs Nivel de Riesgo")
+            # Mapear pensamientos para visualización clara
+            df_abandon = df_resultado.copy()
+            if df_abandon["Pensamientos de abandono"].dtype in [int, float, np.int64]:
+                df_abandon["Abandono_Label"] = df_abandon["Pensamientos de abandono"].map({0: "No", 1: "Sí"})
+            else:
+                df_abandon["Abandono_Label"] = df_abandon["Pensamientos de abandono"]
+
+            # Gráfico de barras apiladas o agrupadas para ver la relación
+            fig_abandon = px.histogram(
+                df_abandon,
+                x="Abandono_Label",
+                color="Posibilidad",
+                barmode="relative", # Apilado para ver composición total
+                color_discrete_map={"Alto":"#FF4B4B","Medio":"#FFAA00","Bajo":"#00CC96"},
+                text_auto=True
+            )
+            fig_abandon.update_layout(
+                xaxis_title="¿Tiene Pensamientos de Abandono?",
+                yaxis_title="Cantidad",
+                legend_title="Riesgo",
+                margin=dict(t=30)
+            )
+            st.plotly_chart(fig_abandon, use_container_width=True)
+
+        with col4:
+            st.markdown("##### 📉 Estrés Académico vs Probabilidad de Deserción")
+            # Boxplot para ver distribución de probabilidad por nivel de presión
+            # Asumimos que Presión Académica es numérica u ordinal
+            fig_stress = px.box(
+                df_resultado,
+                x="Presión académica",
                 y="Probabilidad_%",
-                title="Riesgo Promedio según Presión Académica",
-                color="Probabilidad_%",
-                color_continuous_scale="Reds"
+                color="Presión académica", # Colorear por nivel de presión para impacto visual
+                color_discrete_sequence=px.colors.sequential.Reds,
+                points="outliers" # Mostrar solo outliers como puntos para limpieza
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-        with col_graf4:
-            # Relación Estrés Financiero vs Riesgo Promedio
-            df_finanzas = df_resultado.groupby("Estrés financiero")["Probabilidad_%"].mean().reset_index()
-            fig_bar2 = px.bar(
-                df_finanzas, 
-                x="Estrés financiero", 
-                y="Probabilidad_%",
-                title="Riesgo Promedio según Estrés Financiero",
-                color="Probabilidad_%",
-                color_continuous_scale="Reds"
+            fig_stress.update_layout(
+                xaxis_title="Nivel de Presión Académica",
+                yaxis_title="Probabilidad Calculada (%)",
+                showlegend=False,
+                margin=dict(t=30)
             )
-            st.plotly_chart(fig_bar2, use_container_width=True)
+            st.plotly_chart(fig_stress, use_container_width=True)
 
         # ---------------------------------------------------------
-        # TABLA DE DATOS Y DESCARGA
+        # TABLA Y DESCARGA
         # ---------------------------------------------------------
         st.divider()
-        st.subheader("📋 Tabla de Datos Detallada")
-        st.dataframe(df_resultado)
+        with st.expander("Ver Tabla de Datos Detallada", expanded=False):
+            st.dataframe(df_resultado, use_container_width=True)
 
         csv = df_resultado.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button(
-            "💾 Descargar Reporte Completo (CSV)",
+            "💾 Descargar Reporte CSV",
             data=csv,
-            file_name="reporte_bienestar_con_graficos.csv",
+            file_name="reporte_bienestar_final.csv",
             mime="text/csv",
+            type="primary"
         )
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error en el procesamiento: {e}")
