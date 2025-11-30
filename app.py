@@ -70,119 +70,91 @@ if uploaded_file is not None and rf_model is not None:
         df_resultado['Posibilidad'] = df_resultado['Probabilidad_%'].apply(clasificar_nivel)
 
         # ---------------------------------------------------------
-        # SECCIÓN DEL DASHBOARD
+        # SECCIÓN DEL DASHBOARD (NUEVO)
         # ---------------------------------------------------------
-        st.divider()
+        st.divider()  # Línea divisoria
         st.subheader("📊 Dashboard de Resultados")
 
-        # CÁLCULOS PARA KPIs
-        total_estudiantes = len(df_resultado)
-        
-        # Conteos
-        count_alto = len(df_resultado[df_resultado['Posibilidad'] == 'Alto'])
-        count_medio = len(df_resultado[df_resultado['Posibilidad'] == 'Medio'])
-        count_bajo = len(df_resultado[df_resultado['Posibilidad'] == 'Bajo'])
-        
-        # Porcentajes
-        pct_alto = (count_alto / total_estudiantes) * 100 if total_estudiantes > 0 else 0
-        pct_medio = (count_medio / total_estudiantes) * 100 if total_estudiantes > 0 else 0
-        pct_bajo = (count_bajo / total_estudiantes) * 100 if total_estudiantes > 0 else 0
-
-        # --- FILA 1: KPIs CON PORCENTAJES ---
+        # Métricas principales (KPIs)
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        
-        kpi1.metric(
-            label="Total Estudiantes", 
-            value=total_estudiantes
-        )
-        
-        kpi2.metric(
-            label="Riesgo Alto 🔴", 
-            value=count_alto, 
-            delta=f"{pct_alto:.1f}% del total",
-            delta_color="inverse" # Rojo si aumenta (invertido para riesgo)
-        )
-        
-        kpi3.metric(
-            label="Riesgo Medio 🟡", 
-            value=count_medio, 
-            delta=f"{pct_medio:.1f}% del total",
-            delta_color="off" # Gris/Neutro
-        )
-        
-        kpi4.metric(
-            label="Riesgo Bajo 🟢", 
-            value=count_bajo, 
-            delta=f"{pct_bajo:.1f}% del total",
-            delta_color="normal" # Verde
-        )
+        kpi1.metric("Total Estudiantes", len(df_resultado))
+        kpi2.metric("Riesgo Alto 🔴", len(df_resultado[df_resultado['Posibilidad'] == 'Alto']))
+        kpi3.metric("Riesgo Medio 🟡", len(df_resultado[df_resultado['Posibilidad'] == 'Medio']))
+        kpi4.metric("Promedio Probabilidad", f"{df_resultado['Probabilidad_%'].mean():.1f}%")
 
-        st.markdown("---")
-
-        # --- FILA 2: DISTRIBUCIÓN GENERAL ---
+        # Fila 1 de Gráficos
         col_graf1, col_graf2 = st.columns(2)
 
         with col_graf1:
-            # Gráfico de Donas General
+            # Gráfico de Donas: Distribución de Riesgo
             fig_pie = px.pie(
                 df_resultado, 
                 names='Posibilidad', 
-                title='Distribución Total de Riesgos',
+                title='Distribución de Estudiantes por Nivel de Riesgo',
                 color='Posibilidad',
+                # Colores semaforo
                 color_discrete_map={'Alto':'#FF4B4B', 'Medio':'#FFAA00', 'Bajo':'#00CC96'},
                 hole=0.4
             )
             st.plotly_chart(fig_pie, use_container_width=True)
 
         with col_graf2:
-            # NUEVO: Gráfico Género vs Riesgo
-            # Mapeamos 0/1 a texto para que el gráfico se entienda mejor
-            df_chart = df_resultado.copy()
-            df_chart["Género_Label"] = df_chart["Género"].map({0: "Femenino", 1: "Masculino"})
-            
-            fig_gender = px.histogram(
-                df_chart, 
-                x="Género_Label", 
-                color="Posibilidad",
-                title="Nivel de Riesgo por Género",
-                barmode="group", # Barras agrupadas para comparar
-                color_discrete_map={'Alto':'#FF4B4B', 'Medio':'#FFAA00', 'Bajo':'#00CC96'},
-                category_orders={"Posibilidad": ["Alto", "Medio", "Bajo"]}
+            # Histograma: Distribución de Probabilidades
+            fig_hist = px.histogram(
+                df_resultado, 
+                x="Probabilidad_%", 
+                nbins=20, 
+                title="Distribución de Probabilidades (%)",
+                color_discrete_sequence=['#3366CC']
             )
-            st.plotly_chart(fig_gender, use_container_width=True)
+            fig_hist.update_layout(bargap=0.1)
+            st.plotly_chart(fig_hist, use_container_width=True)
 
-        # --- FILA 3: FOCO EN RIESGO (ALTO + MEDIO) ---
-        st.markdown("#### 🚨 Foco: Estudiantes en Alerta (Alto + Medio)")
-        
-        # Filtramos solo los datos de interés
-        df_risk = df_resultado[df_resultado['Posibilidad'].isin(['Alto', 'Medio'])]
-        
-        if not df_risk.empty:
-            col_risk1, col_risk2 = st.columns(2)
-            
-            with col_risk1:
-                # Presión Académica SOLO en estudiantes de riesgo
-                # Usamos histograma para ver cuántos hay en cada nivel de presión
-                fig_risk_presion = px.histogram(
-                    df_risk,
-                    x="Presión académica",
-                    color="Posibilidad",
-                    title="Presión Académica en Estudiantes de Riesgo",
-                    color_discrete_map={'Alto':'#FF4B4B', 'Medio':'#FFAA00'},
-                    barmode="stack"
-                )
-                st.plotly_chart(fig_risk_presion, use_container_width=True)
-                
-            with col_risk2:
-                # Estrés Financiero SOLO en estudiantes de riesgo
-                fig_risk_finanzas = px.histogram(
-                    df_risk,
-                    x="Estrés financiero",
-                    color="Posibilidad",
-                    title="Estrés Financiero en Estudiantes de Riesgo",
-                    color_discrete_map={'Alto':'#FF4B4B', 'Medio':'#FFAA00'},
-                    barmode="stack"
-                )
-                st.plotly_chart(fig_risk_finanzas, use_container_width=True)
-        else:
-            st.info("¡Excelente! No se detectaron estudiantes en Riesgo Alto o Medio para analizar en detalle.")
+        # Fila 2 de Gráficos (Análisis de Factores)
+        st.markdown("#### 🔍 Análisis de Factores Clave")
+        col_graf3, col_graf4 = st.columns(2)
+
+        with col_graf3:
+            # Relación Presión Académica vs Riesgo Promedio
+            # Agrupamos datos para ver tendencias
+            df_presion = df_resultado.groupby("Presión académica")["Probabilidad_%"].mean().reset_index()
+            fig_bar = px.bar(
+                df_presion, 
+                x="Presión académica", 
+                y="Probabilidad_%",
+                title="Riesgo Promedio según Presión Académica",
+                color="Probabilidad_%",
+                color_continuous_scale="Reds"
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        with col_graf4:
+            # Relación Estrés Financiero vs Riesgo Promedio
+            df_finanzas = df_resultado.groupby("Estrés financiero")["Probabilidad_%"].mean().reset_index()
+            fig_bar2 = px.bar(
+                df_finanzas, 
+                x="Estrés financiero", 
+                y="Probabilidad_%",
+                title="Riesgo Promedio según Estrés Financiero",
+                color="Probabilidad_%",
+                color_continuous_scale="Reds"
+            )
+            st.plotly_chart(fig_bar2, use_container_width=True)
+
+        # ---------------------------------------------------------
+        # TABLA DE DATOS Y DESCARGA
+        # ---------------------------------------------------------
+        st.divider()
+        st.subheader("📋 Tabla de Datos Detallada")
+        st.dataframe(df_resultado)
+
+        csv = df_resultado.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
+            "💾 Descargar Reporte Completo (CSV)",
+            data=csv,
+            file_name="reporte_bienestar_con_graficos.csv",
+            mime="text/csv",
+        )
+
+    except Exception as e:
+        st.error(f"Error: {e}")
