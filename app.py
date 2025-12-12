@@ -14,10 +14,10 @@ st.markdown("Sube un archivo CSV para generar predicciones y visualizar el anál
 @st.cache_resource
 def cargar_modelo():
     try:
-        model = joblib.load('modelo_bienestar.joblib')
+        model = joblib.load('modelo_bienestar_v1.joblib')
         return model
     except FileNotFoundError:
-        st.error("Error: No se encontró el archivo 'modelo_bienestar.joblib'.")
+        st.error("Error: No se encontró el archivo 'modelo_bienestar_v1.joblib'.")
         return None
 
 rf_model = cargar_modelo()
